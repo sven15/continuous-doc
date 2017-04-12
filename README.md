@@ -1,2 +1,2 @@
 # continuous-doc
-Continuously Building of SUSE Documentation
+Continuously Building SUSE Documentation
