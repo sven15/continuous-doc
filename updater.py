@@ -6,6 +6,7 @@ import logging
 import sys
 import tempfile
 import json
+import datetime
 
 
 def setup_custom_logger(name):
@@ -140,26 +141,34 @@ def iterateTypes(confMain, confDocs, resultJson, documentation, repoName, dcFile
 		buildType = buildType.strip()
 		if buildType == 'html':
 			logger.debug("... HTML")
-			if buildHtml(confMain, repoName, dcFile, docPath):
+			path = buildHtml(confMain, repoName, dcFile, docPath)
+			if path:
 				resultJson[documentation]['status']['html'] = "success"
+				resultJson[documentation]['format']['html'] = path
 			else:
 				resultJson[documentation]['status']['html'] = "failed"
 		if buildType == 'pdf':
 			logger.debug("... PDF")
-			if buildPdf(confMain, repoName, dcFile, docPath):
+			path = buildPdf(confMain, repoName, dcFile, docPath)
+			if path:
 				resultJson[documentation]['status']['pdf'] = "success"
+				resultJson[documentation]['format']['pdf'] = path
 			else:
 				resultJson[documentation]['status']['pdf'] = "failed"
 		if buildType == 'single-html':
 			logger.debug("... SINGLE-HTML")
-			if buildSingleHtml(confMain, repoName, dcFile, docPath):
+			path = buildSingleHtml(confMain, repoName, dcFile, docPath)
+			if path:
 				resultJson[documentation]['status']['single-html'] = "success"
+				resultJson[documentation]['format']['single-html'] = path
 			else:
 				resultJson[documentation]['status']['single-html'] = "failed"
 		if buildType == 'epub':
 			logger.debug("... EPUB")
-			if buildEpub(confMain, repoName, dcFile, docPath):
+			path = buildEpub(confMain, repoName, dcFile, docPath)
+			if path:
 				resultJson[documentation]['status']['epub'] = "success"
+				resultJson[documentation]['format']['epub'] = path
 			else:
 				resultJson[documentation]['status']['epub'] = "failed"
 	return resultJson
@@ -170,6 +179,11 @@ def build(confMain, confDocs, resultJson):
 		if documentation == "DEFAULT":
 			continue
 		resultJson = docInJson(confMain, confDocs, resultJson, documentation)
+		resultJson[documentation]["build_date"] = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S UTC+00:00')
+		resultJson[documentation]["version"] = docConf[documentation]['version']
+		resultJson[documentation]["product"] = docConf[documentation]['product']
+		resultJson[documentation]["name"] = docConf[documentation]['name']
+		resultJson[documentation]["type"] = docConf[documentation]['type']
 		lastBuildCommit = getCommitHash(resultJson, documentation)
 		branch = confDocs[documentation]['branch']
 		repoName = confDocs[documentation]['source'].split('/')[-1]
@@ -194,6 +208,7 @@ def build(confMain, confDocs, resultJson):
 def gitUpdate(repoName, repoUrl, buildBranch):
 	my_env = os.environ.copy()
 	if not os.path.isdir(repoName):
+		logger.info("Cloning "+repoUrl)
 		procClone = Popen(["/usr/bin/git clone "+repoUrl], env=my_env, shell=True, stdout=PIPE, stderr=PIPE)
 		procClone.wait()
 	procCheckout = Popen(["cd "+repoName+" && /usr/bin/git checkout "+buildBranch], env=my_env, shell=True, stdout=PIPE, stderr=PIPE)
@@ -219,13 +234,8 @@ def initJson(docMain, docConf, documentation):
 	newJson = {
 		documentation: {
 			"build": 0,
-			"build_date": "2017-04-12 12:45:00 UTC+00:00",
-			"version": docConf[documentation]['version'],
-			"product": docConf[documentation]['product'],
-			"name": docConf[documentation]['name'],
 			"language": docConf[documentation]['language'],
-			"type": docConf[documentation]['type'],
-			"format": {	},
+			"format": {},
 			"source": {
 				"url": docConf[documentation]['source'],
 				"branch": docConf[documentation]['branch'],
