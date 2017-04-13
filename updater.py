@@ -20,8 +20,6 @@ def setup_custom_logger(name):
 	logger.addHandler(screen_handler)
 	return logger
 
-logger = setup_custom_logger('ContinuousDoc')
-
 
 def readFile(filePath):
 	if(os.path.isfile(filePath)):
@@ -118,20 +116,61 @@ def buildEpub(confMain, repoName, dcFile, docPath):
 	return False
 
 
+def docInJson(confMain, confDocs, resultJson, documentation):
+	try:
+		null = resultJson[documentation]
+	except KeyError:
+		logger.info("Init JSON for {}".format(documentation))
+		resultJson.update(initJson(confMain, confDocs,documentation))
+	return resultJson
+
+
+def getCommitHash(resultJson, documentation):
+	try:
+		lastBuildCommit = resultJson[documentation]['source']['commit']
+	except KeyError:
+		logger.info("No build for {}".format(documentation))
+		lastBuildCommit = "null"
+	return lastBuildCommit
+
+
+def iterateTypes(confMain, confDocs, resultJson, documentation, repoName, dcFile):
+	for buildType in confDocs[documentation]['formats'].split(','):
+		docPath = confMain['www']['path']+confDocs[documentation]['language']+"/"+documentation+"/"+str(resultJson[documentation]['build'])
+		buildType = buildType.strip()
+		if buildType == 'html':
+			logger.debug("... HTML")
+			if buildHtml(confMain, repoName, dcFile, docPath):
+				resultJson[documentation]['status']['html'] = "success"
+			else:
+				resultJson[documentation]['status']['html'] = "failed"
+		if buildType == 'pdf':
+			logger.debug("... PDF")
+			if buildPdf(confMain, repoName, dcFile, docPath):
+				resultJson[documentation]['status']['pdf'] = "success"
+			else:
+				resultJson[documentation]['status']['pdf'] = "failed"
+		if buildType == 'single-html':
+			logger.debug("... SINGLE-HTML")
+			if buildSingleHtml(confMain, repoName, dcFile, docPath):
+				resultJson[documentation]['status']['single-html'] = "success"
+			else:
+				resultJson[documentation]['status']['single-html'] = "failed"
+		if buildType == 'epub':
+			logger.debug("... EPUB")
+			if buildEpub(confMain, repoName, dcFile, docPath):
+				resultJson[documentation]['status']['epub'] = "success"
+			else:
+				resultJson[documentation]['status']['epub'] = "failed"
+	return resultJson
+
+
 def build(confMain, confDocs, resultJson):
 	for documentation in confDocs:
 		if documentation == "DEFAULT":
 			continue
-		try:
-			null = resultJson[documentation]
-		except KeyError:
-			logger.info("Init JSON for {}".format(documentation))
-			resultJson.update(initJson(confMain, confDocs,documentation))
-		try:
-			lastBuildCommit = resultJson[documentation]['source']['commit']
-		except KeyError:
-			logger.info("No build for {}".format(documentation))
-			lastBuildCommit = "null"
+		resultJson = docInJson(confMain, confDocs, resultJson, documentation)
+		lastBuildCommit = getCommitHash(resultJson, documentation)
 		branch = confDocs[documentation]['branch']
 		repoName = confDocs[documentation]['source'].split('/')[-1]
 		gitUpdate(repoName, confDocs[documentation]['source'], branch)
@@ -141,33 +180,7 @@ def build(confMain, confDocs, resultJson):
 		logger.info('Building: '+documentation)
 		dcFile = confDocs[documentation]['dc']
 		resultJson[documentation]['build'] = resultJson[documentation]['build'] + 1
-		for buildType in confDocs[documentation]['formats'].split(','):
-			docPath = confMain['www']['path']+confDocs[documentation]['language']+"/"+documentation+"/"+str(resultJson[documentation]['build'])
-			buildType = buildType.strip()
-			if buildType == 'html':
-				logger.debug("... HTML")
-				if buildHtml(confMain, repoName, dcFile, docPath):
-					resultJson[documentation]['status']['html'] = "success"
-				else:
-					resultJson[documentation]['status']['html'] = "failed"
-			if buildType == 'pdf':
-				logger.debug("... PDF")
-				if buildPdf(confMain, repoName, dcFile, docPath):
-					resultJson[documentation]['status']['pdf'] = "success"
-				else:
-					resultJson[documentation]['status']['pdf'] = "failed"
-			if buildType == 'single-html':
-				logger.debug("... SINGLE-HTML")
-				if buildSingleHtml(confMain, repoName, dcFile, docPath):
-					resultJson[documentation]['status']['single-html'] = "success"
-				else:
-					resultJson[documentation]['status']['single-html'] = "failed"
-			if buildType == 'epub':
-				logger.debug("... EPUB")
-				if buildEpub(confMain, repoName, dcFile, docPath):
-					resultJson[documentation]['status']['epub'] = "success"
-				else:
-					resultJson[documentation]['status']['epub'] = "failed"
+		resultJson = iterateTypes(confMain, confDocs, resultJson, documentation, repoName, dcFile)
 		try:
 			os.remove(confMain['www']['path']+confDocs[documentation]['language']+"/"+documentation+"/current")
 		except FileNotFoundError:
@@ -176,6 +189,7 @@ def build(confMain, confDocs, resultJson):
 		os.symlink(docPath, confMain['www']['path']+confDocs[documentation]['language']+"/"+documentation+"/current")
 		writeFile(confMain['www']['path']+"json/"+confMain['www']['build']+".json", json.dumps(resultJson))
 	return resultJson
+
 
 def gitUpdate(repoName, repoUrl, buildBranch):
 	my_env = os.environ.copy()
@@ -222,6 +236,7 @@ def initJson(docMain, docConf, documentation):
 	}
 	return newJson
 
+
 def main():
 	confMainFile = 'main.conf'
 	confMain = readConfig(confMainFile)
@@ -240,5 +255,7 @@ def main():
 		pass
 	os.symlink(confMain['www']['path']+"json/"+confMain['www']['build']+".json", confMain['www']['path']+"current.json")
 
+
+logger = setup_custom_logger('ContinuousDoc')
 if __name__ == "__main__":
 	main()
